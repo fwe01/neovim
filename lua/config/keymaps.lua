@@ -6,19 +6,19 @@
 vim.g.mapleader = " "
 
 -- word wrap
-vim.keymap.set("n", "j", "gj")
-vim.keymap.set("n", "k", "gk")
-vim.keymap.set("n", "<leader>ww", ":set wrap!<CR>")
+vim.keymap.set("n", "j", "gj", { desc = "Move down in word wrap" })
+vim.keymap.set("n", "k", "gk", { desc = "Move down in word wrap" })
+vim.keymap.set("n", "<leader>ww", ":set wrap!<CR>", { desc = "Toggle Word Wrap" })
 
 -- nggeser baris
-vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv")
-vim.keymap.set("v", "K", ":m '<-2<CR>gv=gv")
+vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv", { desc = "Move Highlighted rows down" })
+vim.keymap.set("v", "K", ":m '<-2<CR>gv=gv", { desc = "Move Highlighted rows up" })
 
 -- kalau shift+J kursor tetep
 vim.keymap.set("n", "J", "mzJ`z")
 
 -- Yank 1 baris
-vim.keymap.set("n", "Y", "VY")
+vim.keymap.set("n", "Y", "Vy")
 
 -- replace all occurence in file regex
 vim.keymap.set("n", "<leader>rao", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gI<Left><Left><Left>]])
@@ -29,12 +29,12 @@ vim.keymap.set("n", "<C-u>", "<C-u>zz")
 vim.keymap.set("n", "n", "nzzzv")
 vim.keymap.set("n", "N", "Nzzzv")
 
-vim.keymap.set("n", "<leader>vwm", function()
-  require("vim-with-me").StartVimWithMe()
-end)
-vim.keymap.set("n", "<leader>svwm", function()
-  require("vim-with-me").StopVimWithMe()
-end)
+-- vim.keymap.set("n", "<leader>vwm", function()
+--   require("vim-with-me").StartVimWithMe()
+-- end)
+-- vim.keymap.set("n", "<leader>svwm", function()
+--   require("vim-with-me").StopVimWithMe()
+-- end)
 
 -- greatest remap ever
 vim.keymap.set("x", "<leader>p", [["_dP]])
@@ -44,9 +44,6 @@ vim.keymap.set("x", "<leader>p", [["_dP]])
 -- vim.keymap.set("n", "<leader>Y", [["+Y]])
 
 vim.keymap.set({ "n", "v" }, "<leader>d", [["_d]])
-
--- This is going to get me cancelled
-vim.keymap.set("i", "<C-c>", "<Esc>")
 
 vim.keymap.set("n", "Q", "<nop>")
 
@@ -67,16 +64,20 @@ end)
 
 -- vim.keymap.set("n", "<C-k>", "<cmd>cnext<CR>zz")
 -- vim.keymap.set("n", "<C-j>", "<cmd>cprev<CR>zz")
-vim.keymap.set("n", "<leader>k", "<cmd>lnext<CR>zz")
-vim.keymap.set("n", "<leader>j", "<cmd>lprev<CR>zz")
+-- vim.keymap.set("n", "<leader>k", "<cmd>lnext<CR>zz")
+-- vim.keymap.set("n", "<leader>j", "<cmd>lprev<CR>zz")
 
-vim.keymap.set("n", "<leader>x", "<cmd>!chmod +x %<CR>", { silent = true })
+-- ini chmod kok berbaya
+-- vim.keymap.set("n", "<leader>x", "<cmd>!chmod +x %<CR>", { silent = true })
 
 vim.keymap.set("n", "<leader>vpp", "<cmd>e ~/.dotfiles/nvim/.config/nvim/lua/theprimeagen/packer.lua<CR>")
-vim.keymap.set("n", "<leader>mr", "<cmd>CellularAutomaton make_it_rain<CR>")
-vim.keymap.set("n", "<leader>mgoi", "<cmd>CellularAutomaton game_of_life<CR>")
 
-vim.keymap.set("n", "<leader>h", ":nohlsearch<CR>")
+-- CellularAutomaton
+vim.keymap.set("n", "<leader>mr", "<cmd>CellularAutomaton make_it_rain<CR>", { desc = "Make Code Rain" })
+vim.keymap.set("n", "<leader>mgoi", "<cmd>CellularAutomaton game_of_life<CR>", { desc = "Make Code Game Of Life" })
+
+-- Highlight search
+vim.keymap.set("n", "<leader>h", ":set invhlsearch", { desc = "Toggle Highlight Search" })
 
 --fold
 vim.keymap.set("n", "<leader>fme", ":set foldmethod=expr<CR>")
