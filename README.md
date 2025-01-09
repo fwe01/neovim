@@ -24,3 +24,8 @@ scoop install lazygit
 1. `:Mason`
 1. Pilih tab `LSP`
 1. Kalau dah tau namanya, `:MasonInstall {namanya}`
+
+# Font
+
+1. Download font "Jetbrain Mono Nerd Font"
+1. Ganti setting terminal agar pakai font tersebut
