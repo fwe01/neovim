@@ -20,6 +20,9 @@ vim.keymap.set("n", "J", "mzJ`z")
 -- Yank 1 baris
 vim.keymap.set("n", "Y", "VY")
 
+-- replace all occurence in file regex
+vim.keymap.set("n", "<leader>rao", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gI<Left><Left><Left>]])
+
 -- Scrool naik turun
 vim.keymap.set("n", "<C-d>", "<C-d>zz")
 vim.keymap.set("n", "<C-u>", "<C-u>zz")
@@ -67,11 +70,11 @@ end)
 vim.keymap.set("n", "<leader>k", "<cmd>lnext<CR>zz")
 vim.keymap.set("n", "<leader>j", "<cmd>lprev<CR>zz")
 
-vim.keymap.set("n", "<leader>s", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gI<Left><Left><Left>]])
 vim.keymap.set("n", "<leader>x", "<cmd>!chmod +x %<CR>", { silent = true })
 
 vim.keymap.set("n", "<leader>vpp", "<cmd>e ~/.dotfiles/nvim/.config/nvim/lua/theprimeagen/packer.lua<CR>")
 vim.keymap.set("n", "<leader>mr", "<cmd>CellularAutomaton make_it_rain<CR>")
+vim.keymap.set("n", "<leader>mgoi", "<cmd>CellularAutomaton game_of_life<CR>")
 
 vim.keymap.set("n", "<leader>h", ":nohlsearch<CR>")
 
