@@ -21,7 +21,12 @@ vim.keymap.set("n", "J", "mzJ`z")
 vim.keymap.set("n", "Y", "Vy")
 
 -- replace all occurence in file regex
-vim.keymap.set("n", "<leader>rao", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gI<Left><Left><Left>]])
+vim.keymap.set(
+  "n",
+  "<leader>rao",
+  [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gcI<Left><Left><Left>]],
+  { desc = "Replace all occurence in file using regex" }
+)
 
 -- Scrool naik turun
 vim.keymap.set("n", "<C-d>", "<C-d>zz")
