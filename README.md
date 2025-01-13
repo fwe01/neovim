@@ -28,4 +28,4 @@ scoop install lazygit
 # Font
 
 1. Download font "Jetbrain Mono Nerd Font"
-1. Ganti setting terminal agar pakai font tersebut
+1. Set font di settingan terminal
