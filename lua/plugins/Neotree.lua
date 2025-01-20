@@ -5,7 +5,7 @@ local renderer = require("neo-tree.ui.renderer")
 -- Expand a node and load filesystem info if needed.
 local function open_dir(state, dir_node)
   local fs = require("neo-tree.sources.filesystem")
-  fs.toggle_directory(state, dir_node, nil, true, false)
+  fs.toggle_directory(state, dir_node, nil, true, true)
 end
 
 -- Expand a node and all its children, optionally stopping at max_depth.
@@ -215,6 +215,9 @@ return {
     source_selector = {
       winbar = true,
       statusline = true,
+    },
+    filesystem = {
+      scan_mode = "deep",
     },
     window = {
       width = 30,
