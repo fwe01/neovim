@@ -1,11 +1,11 @@
 -- https://github.com/nvim-neo-tree/neo-tree.nvim/issues/445
 local neotree = require("neo-tree")
 local renderer = require("neo-tree.ui.renderer")
+local fs = require("neo-tree.sources.filesystem")
 
 -- Expand a node and load filesystem info if needed.
 local function open_dir(state, dir_node)
-  local fs = require("neo-tree.sources.filesystem")
-  fs.toggle_directory(state, dir_node, nil, true, false)
+  fs.toggle_directory(state, dir_node, nil, true, true)
 end
 
 -- Expand a node and all its children, optionally stopping at max_depth.
@@ -215,6 +215,16 @@ return {
     source_selector = {
       winbar = true,
       statusline = true,
+    },
+    filesystem = {
+      filtered_items = {
+        hide_hidden = true,
+        hide_dotfiles = true,
+        hide_gitignored = true,
+      },
+      follow_current_file = {
+        leave_dirs_open = false,
+      },
     },
     window = {
       width = 30,
