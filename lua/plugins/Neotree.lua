@@ -1,211 +1,309 @@
--- https://github.com/nvim-neo-tree/neo-tree.nvim/issues/445
-local neotree = require("neo-tree")
+-- https://github.com/nvim-neo-tree/neo-tree.nvim/discussions/368
+
+local utils = require("neo-tree.utils")
 local renderer = require("neo-tree.ui.renderer")
+local events = require("neo-tree.events")
+local manager = require("neo-tree.sources.manager")
+local fs_scan = require("neo-tree.sources.filesystem.lib.fs_scan")
 
--- Expand a node and load filesystem info if needed.
-local function open_dir(state, dir_node)
-  local fs = require("neo-tree.sources.filesystem")
-  fs.toggle_directory(state, dir_node, nil, true, true)
+-- Event to update cursor node when cursor is moved
+local cursor_moved = "cursor_moved"
+events.define_autocmd_event(cursor_moved, { "CursorMoved" })
+local cursor_event = function(handler)
+  return { event = cursor_moved, id = "update_cursor_node", handler = handler }
 end
 
--- Expand a node and all its children, optionally stopping at max_depth.
-local function recursive_open(state, node, max_depth)
-  local max_depth_reached = 1
-  local stack = { node }
-  while next(stack) ~= nil do
-    node = table.remove(stack)
-    if node.type == "directory" and not node:is_expanded() then
-      open_dir(state, node)
+---- Helper functions ----
+
+-- Determine if current cursor node is descendent of the seleced node
+local cursor_node_is_descendant = function(tree)
+  if not tree.cursor_node then
+    return false
+  end
+  local curnode = tree.cursor_node
+  while true do
+    if curnode:get_id() == tree:get_node():get_id() then
+      return true
     end
+    if vim.tbl_contains(tree.nodes.root_ids, curnode:get_id()) then
+      return false
+    end
+    curnode = tree.nodes.by_id[curnode:get_parent_id()]
+  end
+end
 
-    local depth = node:get_depth()
-    max_depth_reached = math.max(depth, max_depth_reached)
+-- Set the cursor node position if it is not set
+-- and handle removing it when needed
+local should_update_cursor = true
+local update_cursor_node = function(state)
+  if state.tree.cursor_node then
+    return
+  end
+  state.tree.cursor_node = state.tree:get_node()
+  manager.subscribe(
+    state.name,
+    cursor_event(function()
+      if not should_update_cursor then
+        return
+      end
+      local should_remove = state.name ~= vim.b.neo_tree_source
+      should_remove = should_remove or not cursor_node_is_descendant(state.tree)
+      should_remove = should_remove or state.tree:get_node():is_expanded()
+      if should_remove then
+        state.tree.cursor_node = nil
+        manager.unsubscribe(state.name, cursor_event())
+      end
+    end)
+  )
+end
 
-    if not max_depth or depth < max_depth - 1 then
-      local children = state.tree:get_nodes(node:get_id())
-      for _, v in ipairs(children) do
-        table.insert(stack, v)
+-- Recursively open all expandable nodes with given ancestor,
+-- including unloaded files and directories in the filesystem source.
+-- NOTE: This seems to work, but it's pretty ugly and probably
+--       isn't as efficient as it could be.
+local num_started, num_done
+local function scan_all(state, parent_id, callback, rec)
+  if not rec then
+    num_started, num_done = 0, 0
+  end
+  num_started = num_started + 1
+  local parent = state.tree.nodes.by_id[parent_id]
+  if state.name == "filesystem" and parent.loaded == false then
+    fs_scan.get_items(state, parent_id, nil, function()
+      for _, id in ipairs(parent:get_child_ids()) do
+        if state.tree.nodes.by_id[id].type == "directory" then
+          scan_all(state, id, callback, true)
+        end
+      end
+      num_done = num_done + 1
+      if num_started == num_done then
+        callback()
+      end
+    end)
+  else
+    if utils.is_expandable(parent) and not parent:is_expanded() then
+      parent:expand()
+    end
+    for _, id in ipairs(parent:get_child_ids()) do
+      if utils.is_expandable(state.tree.nodes.by_id[id]) then
+        scan_all(state, id, callback, true)
       end
     end
-  end
-
-  return max_depth_reached
-end
-
---- Open the fold under the cursor, recursing if count is given.
-local function neotree_zo(state, open_all)
-  local node = state.tree:get_node()
-
-  if open_all then
-    recursive_open(state, node)
-  else
-    recursive_open(state, node, node:get_depth() + vim.v.count1)
-  end
-
-  renderer.redraw(state)
-end
-
---- Recursively open the current folder and all folders it contains.
-local function neotree_zO(state)
-  neotree_zo(state, true)
-end
-
--- The nodes inside the root folder are depth 2.
-local MIN_DEPTH = 2
-
---- Close the node and its parents, optionally stopping at max_depth.
-local function recursive_close(state, node, max_depth)
-  if max_depth == nil or max_depth <= MIN_DEPTH then
-    max_depth = MIN_DEPTH
-  end
-
-  local last = node
-  while node and node:get_depth() >= max_depth do
-    if node:has_children() and node:is_expanded() then
-      node:collapse()
+    num_done = num_done + 1
+    if num_started == num_done then
+      callback()
     end
-    last = node
-    node = state.tree:get_node(node:get_parent_id())
   end
-
-  return last
 end
 
---- Close a folder, or a number of folders equal to count.
-local function neotree_zc(state, close_all)
+---- Commands ----
+
+local commands = {}
+
+-- Used for hjkl navigation
+commands.expand_node = function(state)
   local node = state.tree:get_node()
-  if not node then
+  if not utils.is_expandable(node) or node:is_expanded() then
+    return
+  end
+  state.commands.toggle_node(state)
+
+  local focus_child = function()
+    if node:has_children() then
+      renderer.focus_node(state, node:get_child_ids()[1])
+    end
+  end
+  if state.name == "filesystem" and node.loaded == false then
+    fs_scan.get_items(state, node:get_id(), nil, focus_child)
+  else
+    focus_child()
+  end
+end
+
+commands.open_fold = function(state)
+  local tree = state.tree
+  local node = tree:get_node()
+  if not utils.is_expandable(node) or node:is_expanded() then
+    return
+  end
+  state.commands.toggle_node(state)
+
+  if tree.cursor_node and tree.cursor_node:get_id() ~= node:get_id() then
+    local curnode = tree.cursor_node
+    while curnode:get_parent_id() ~= node:get_id() do
+      curnode = tree.nodes.by_id[curnode:get_parent_id()]
+    end
+    renderer.focus_node(state, curnode:get_id())
+  end
+end
+
+commands.open_folds_rec = function(state)
+  local tree = state.tree
+  local node = tree:get_node()
+  if not utils.is_expandable(node) or node:is_expanded() then
     return
   end
 
-  local max_depth
-  if not close_all then
-    max_depth = node:get_depth() - vim.v.count1
-    if node:has_children() and node:is_expanded() then
-      max_depth = max_depth + 1
+  should_update_cursor = false
+  scan_all(state, node:get_id(), function()
+    if tree.cursor_node then
+      renderer.focus_node(state, tree.cursor_node:get_id())
     end
+    tree:render()
+    should_update_cursor = true
+  end)
+end
+
+commands.close_fold = function(state)
+  update_cursor_node(state)
+  state.commands.close_node(state)
+end
+
+commands.close_folds_rec = function(state)
+  update_cursor_node(state)
+  while not vim.tbl_contains(state.tree.nodes.root_ids, state.tree:get_node():get_id()) do
+    state.commands.close_node(state)
+  end
+end
+
+commands.toggle_fold = function(state)
+  local node = state.tree:get_node()
+  if utils.is_expandable(node) then
+    if node:is_expanded() then
+      commands.close_fold(state)
+    else
+      commands.open_fold(state)
+    end
+  else
+    commands.close_fold(state)
+  end
+end
+
+commands.toggle_folds_rec = function(state)
+  local node = state.tree:get_node()
+  if utils.is_expandable(node) then
+    if node:is_expanded() then
+      commands.close_folds_rec(state)
+    else
+      commands.open_folds_rec(state)
+    end
+  else
+    commands.close_folds_rec(state)
+  end
+end
+
+commands.fold_view_cursor = function(state)
+  local tree = state.tree
+  if tree.cursor_node then
+    renderer.focus_node(state, tree.cursor_node:get_id())
+    tree:render()
+  end
+end
+
+commands.close_all_folds = function(state)
+  update_cursor_node(state)
+  state.commands.close_all_nodes(state)
+  state.commands.close_node(state)
+end
+
+commands.expand_all_folds = function(state)
+  local tree = state.tree
+  local node = tree:get_node()
+  should_update_cursor = false
+  scan_all(state, tree.nodes.root_ids[1], function()
+    if tree.cursor_node then
+      renderer.focus_node(state, tree.cursor_node:get_id())
+    else
+      renderer.focus_node(state, node:get_id())
+    end
+    tree:render()
+    should_update_cursor = true
+  end)
+end
+
+commands.focus_fold_start = function(state)
+  local parent_id = state.tree:get_node():get_parent_id()
+  if parent_id then
+    renderer.focus_node(state, parent_id)
+  end
+end
+
+commands.focus_fold_end = function(state)
+  local node = state.tree:get_node()
+  local last
+  if utils.is_expandable(node) and node:is_expanded() then
+    if node:has_children() then
+      local children = node:get_child_ids()
+      last = children[#children]
+    end
+  elseif node:get_parent_id() then
+    local siblings = state.tree.nodes.by_id[node:get_parent_id()]:get_child_ids()
+    last = siblings[#siblings]
+  end
+  if last then
+    renderer.focus_node(state, last)
+  end
+end
+
+commands.focus_next_fold_start = function(state, node, dont_check_children)
+  node = node or state.tree:get_node()
+  local nodes = state.tree.nodes.by_id
+
+  if not dont_check_children and utils.is_expandable(node) and node:has_children() then
+    local first_child_id = node:get_child_ids()[1]
+    if utils.is_expandable(nodes[first_child_id]) then
+      renderer.focus_node(state, first_child_id)
+      return
+    end
+    commands.focus_next_fold_start(state, nodes[first_child_id])
   end
 
-  local last = recursive_close(state, node, max_depth)
-  renderer.redraw(state)
-  renderer.focus_node(state, last:get_id())
-end
-
--- Close all containing folders back to the top level.
-local function neotree_zC(state)
-  neotree_zc(state, true)
-end
-
---- Open a closed folder or close an open one, with an optional count.
-local function neotree_za(state, toggle_all)
-  local node = state.tree:get_node()
-  if not node then
+  local parent_id = node:get_parent_id()
+  if not parent_id then
     return
   end
 
-  if node.type == "directory" and not node:is_expanded() then
-    neotree_zo(state, toggle_all)
-  else
-    neotree_zc(state, toggle_all)
-  end
-end
-
---- Recursively close an open folder or recursively open a closed folder.
-local function neotree_zA(state)
-  neotree_za(state, true)
-end
-
---- Set depthlevel, analagous to foldlevel, for the neo-tree file tree.
-local function set_depthlevel(state, depthlevel)
-  if depthlevel < MIN_DEPTH then
-    depthlevel = MIN_DEPTH
-  end
-
-  local stack = state.tree:get_nodes()
-  while next(stack) ~= nil do
-    local node = table.remove(stack)
-
-    if node.type == "directory" then
-      local should_be_open = depthlevel == nil or node:get_depth() < depthlevel
-      if should_be_open and not node:is_expanded() then
-        open_dir(state, node)
-      elseif not should_be_open and node:is_expanded() then
-        node:collapse()
+  local below_node = false
+  for _, sibling_id in ipairs(nodes[parent_id]:get_child_ids()) do
+    if not below_node then
+      if sibling_id == node:get_id() then
+        below_node = true
       end
-    end
-
-    local children = state.tree:get_nodes(node:get_id())
-    for _, v in ipairs(children) do
-      table.insert(stack, v)
+    elseif utils.is_expandable(nodes[sibling_id]) then
+      renderer.focus_node(state, sibling_id)
+      return
     end
   end
-
-  vim.b.neotree_depthlevel = depthlevel
+  commands.focus_next_fold_start(state, nodes[parent_id], true)
 end
 
---- Refresh the tree UI after a change of depthlevel.
--- @bool stay Keep the current node revealed and selected
-local function redraw_after_depthlevel_change(state, stay)
-  local node = state.tree:get_node()
+commands.focus_prev_fold_end = function(state, node)
+  node = node or state.tree:get_node()
+  local nodes = state.tree.nodes.by_id
 
-  if stay then
-    require("neo-tree.ui.renderer").expand_to_node(state.tree, node)
+  local parent_id = node:get_parent_id()
+  if not parent_id then
+    return
+  end
+
+  local prev_fold_end
+  for _, sibling_id in ipairs(nodes[parent_id]:get_child_ids()) do
+    if sibling_id == node:get_id() then
+      break
+    end
+    if utils.is_expandable(nodes[sibling_id]) then
+      prev_fold_end = sibling_id
+    end
+  end
+  if prev_fold_end then
+    while nodes[prev_fold_end]:is_expanded() and nodes[prev_fold_end]:has_children() do
+      local children = nodes[prev_fold_end]:get_child_ids()
+      prev_fold_end = children[#children]
+    end
+    renderer.focus_node(state, prev_fold_end)
   else
-    -- Find the closest parent that is still visible.
-    local parent = state.tree:get_node(node:get_parent_id())
-    while not parent:is_expanded() and parent:get_depth() > 1 do
-      node = parent
-      parent = state.tree:get_node(node:get_parent_id())
-    end
+    commands.focus_prev_fold_end(state, nodes[parent_id])
   end
-
-  renderer.redraw(state)
-  renderer.focus_node(state, node:get_id())
-end
-
---- Update all open/closed folders by depthlevel, then reveal current node.
-local function neotree_zx(state)
-  set_depthlevel(state, vim.b.neotree_depthlevel or MIN_DEPTH)
-  redraw_after_depthlevel_change(state, true)
-end
-
---- Update all open/closed folders by depthlevel.
-local function neotree_zX(state)
-  set_depthlevel(state, vim.b.neotree_depthlevel or MIN_DEPTH)
-  redraw_after_depthlevel_change(state, false)
-end
-
--- Collapse more folders: decrease depthlevel by 1 or count.
-local function neotree_zm(state)
-  local depthlevel = vim.b.neotree_depthlevel or MIN_DEPTH
-  set_depthlevel(state, depthlevel - vim.v.count1)
-  redraw_after_depthlevel_change(state, false)
-end
-
--- Collapse all folders. Set depthlevel to MIN_DEPTH.
-local function neotree_zM(state)
-  set_depthlevel(state, MIN_DEPTH)
-  redraw_after_depthlevel_change(state, false)
-end
-
--- Expand more folders: increase depthlevel by 1 or count.
-local function neotree_zr(state)
-  local depthlevel = vim.b.neotree_depthlevel or MIN_DEPTH
-  set_depthlevel(state, depthlevel + vim.v.count1)
-  redraw_after_depthlevel_change(state, false)
-end
-
--- Expand all folders. Set depthlevel to the deepest node level.
-local function neotree_zR(state)
-  local top_level_nodes = state.tree:get_nodes()
-
-  local max_depth = 1
-  for _, node in ipairs(top_level_nodes) do
-    max_depth = math.max(max_depth, recursive_open(state, node))
-  end
-
-  vim.b.neotree_depthlevel = max_depth
-  redraw_after_depthlevel_change(state, false)
 end
 
 return {
@@ -227,18 +325,19 @@ return {
         -- Folding setting
         ["z"] = "none",
 
-        ["zo"] = neotree_zo,
-        ["zO"] = neotree_zO,
-        ["zc"] = neotree_zc,
-        ["zC"] = neotree_zC,
-        ["za"] = neotree_za,
-        ["zA"] = neotree_zA,
-        ["zx"] = neotree_zx,
-        ["zX"] = neotree_zX,
-        ["zm"] = neotree_zm,
-        ["zM"] = neotree_zM,
-        ["zr"] = neotree_zr,
-        ["zR"] = neotree_zR,
+        ["zo"] = commands.open_fold,
+        ["zO"] = commands.open_folds_rec,
+        ["zc"] = commands.close_fold,
+        ["zC"] = commands.close_folds_rec,
+        ["za"] = commands.toggle_fold,
+        ["zA"] = commands.toggle_folds_rec,
+        ["zv"] = commands.fold_view_cursor,
+        ["zM"] = commands.close_all_folds,
+        ["zR"] = commands.expand_all_folds,
+        ["[z"] = commands.focus_fold_start,
+        ["]z"] = commands.focus_fold_end,
+        ["zj"] = commands.focus_next_fold_start,
+        ["zk"] = commands.focus_prev_fold_end,
       },
     },
   },
