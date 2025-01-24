@@ -53,7 +53,6 @@ return {
     },
   },
 
-
   -- Use <tab> for completion and snippets (supertab)
   -- first: disable default <tab> and <s-tab> behavior in LuaSnip
   -- then: setup supertab in cmp
@@ -99,6 +98,6 @@ return {
       })
     end,
   },
-  { 'theprimeagen/harpoon' },
-  { 'mbbill/undotree' }
+  { "theprimeagen/harpoon" },
+  { "mbbill/undotree" },
 }
