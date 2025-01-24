@@ -1,6 +1,5 @@
 {
   "extras": [
-    "lazyvim.plugins.extras.lang.php",
     "lazyvim.plugins.extras.ui.treesitter-context"
   ],
   "news": {
